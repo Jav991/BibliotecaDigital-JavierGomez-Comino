@@ -1,0 +1,121 @@
+﻿name: CI - Pruebas automatizadas
+
+on:
+  push:
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Compilar y ejecutar todas las pruebas
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v7
+
+      - name: Preparar .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Comprobar versión de .NET
+        run: dotnet --info
+
+      - name: Restaurar dependencias
+        run: dotnet restore BibliotecaDigitalE2E.sln
+
+      - name: Compilar la solución
+        run: |
+          dotnet build BibliotecaDigitalE2E.sln \
+            --configuration Release \
+            --no-restore
+
+      - name: Ejecutar pruebas unitarias
+        run: |
+          dotnet test tests/Biblioteca.UnitTests/Biblioteca.UnitTests.csproj \
+            --configuration Release \
+            --no-build \
+            --no-restore \
+            --logger "trx;LogFileName=unit-tests.trx" \
+            --results-directory TestResults/Unit
+
+      - name: Ejecutar pruebas de integración
+        run: |
+          dotnet test tests/Biblioteca.IntegrationTests/Biblioteca.IntegrationTests.csproj \
+            --configuration Release \
+            --no-build \
+            --no-restore \
+            --logger "trx;LogFileName=integration-tests.trx" \
+            --results-directory TestResults/Integration
+
+      - name: Arrancar la API
+        run: |
+          ASPNETCORE_URLS="http://127.0.0.1:5080" \
+          nohup dotnet src/Biblioteca.Api/bin/Release/net10.0/Biblioteca.Api.dll \
+            > api.log 2>&1 &
+
+          echo $! > api.pid
+
+      - name: Esperar a que la API esté disponible
+        run: |
+          for attempt in {1..30}; do
+
+            if curl --fail --silent \
+              http://127.0.0.1:5080/api/health \
+              > /dev/null; then
+
+              echo "API disponible."
+              exit 0
+            fi
+
+            echo "Esperando a que arranque la API..."
+            sleep 2
+          done
+
+          echo "No se ha podido iniciar la API."
+          cat api.log
+          exit 1
+
+      - name: Ejecutar pruebas E2E
+        env:
+          E2E_BASE_URL: http://127.0.0.1:5080
+        run: |
+          dotnet test tests/Biblioteca.E2ETests/Biblioteca.E2ETests.csproj \
+            --configuration Release \
+            --no-build \
+            --no-restore \
+            --logger "trx;LogFileName=e2e-tests.trx" \
+            --results-directory TestResults/E2E
+
+      - name: Mostrar registros de la API si hay errores
+        if: failure()
+        run: cat api.log || true
+
+      - name: Detener la API
+        if: always()
+        run: |
+          if [ -f api.pid ]; then
+            kill "$(cat api.pid)" || true
+          fi
+
+      - name: Guardar resultados de las pruebas
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: resultados-pruebas
+          path: TestResults/
+          if-no-files-found: warn
+          retention-days: 7
