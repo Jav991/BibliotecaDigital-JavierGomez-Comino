@@ -55,5 +55,19 @@ public class BooksApiTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
+    [Fact]
+    public async Task CreateBook_WithInvalidData_ReturnsBadRequest()
+    {
+        var request = new CreateBookRequest
+        {
+            Title = "", Author = "Autor de pruebas",
+            Isbn = "9780307474728", PublishedYear = 2020, AvailableCopies = 1
+        };
+
+        var response = await _client.PostAsJsonAsync("/api/books", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     private sealed record BookResponse(int Id, string Title, string Author, string Isbn, int PublishedYear, int AvailableCopies);
 }
