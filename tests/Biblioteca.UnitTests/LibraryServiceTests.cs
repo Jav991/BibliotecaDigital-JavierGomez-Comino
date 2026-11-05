@@ -29,7 +29,7 @@ public class LibraryServiceTests
 
         Assert.Null(result.Error);
         Assert.Equal(10, result.Book!.Id);
-        Assert.Equal("Libro falso", result.Book.Title);
+        Assert.Equal("Clean Code", result.Book.Title);
     }
 
     [Fact]
