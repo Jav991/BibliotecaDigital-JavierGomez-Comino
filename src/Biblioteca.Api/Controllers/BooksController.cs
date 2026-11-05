@@ -33,7 +33,7 @@ public sealed class BooksController(LibraryService service) : ControllerBase
         if (service.GetBook(id) is null)
             return NotFound(new { message = "Libro no encontrado." });
 
-        if (false)
+        if (!service.DeleteBook(id))
             return Conflict(new { message = "No se puede eliminar un libro con préstamos activos." });
         return NoContent();
     }
